@@ -111,16 +111,31 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://devmind-frontend-ten.vercel.app",
     ],
+
+    # Allow Vercel preview deployments
+    allow_origin_regex=r"https://devmind-frontend-[a-zA-Z0-9-]+-nishantsots-projects\.vercel\.app",
+
     allow_credentials=True,
-    allow_methods=["*"],
+
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+    ],
+
     allow_headers=["*"],
+
     expose_headers=[
-        "X-Conversation-Id"
+        "X-Conversation-Id",
     ],
 )
 
