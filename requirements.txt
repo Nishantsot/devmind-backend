@@ -13,6 +13,4 @@ python-jose[cryptography]
 argon2-cffi
 passlib
 bcrypt
-numpy
 pypdf
-sentence-transformers

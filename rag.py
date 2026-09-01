@@ -1,26 +1,9 @@
 import os
-import numpy as np
+import math
+import re
+from collections import Counter
 
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
-
-
-# =========================================================
-# EMBEDDING MODEL - LAZY LOAD
-# =========================================================
-
-embedding_model = None
-
-
-def get_embedding_model():
-    global embedding_model
-
-    if embedding_model is None:
-        embedding_model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
-
-    return embedding_model
 
 
 # =========================================================
@@ -98,7 +81,6 @@ def chunk_text(
         ].strip()
 
         if chunk:
-
             chunks.append(
                 chunk
             )
@@ -109,6 +91,84 @@ def chunk_text(
         )
 
     return chunks
+
+
+# =========================================================
+# TOKENIZE
+# =========================================================
+
+def tokenize(text: str):
+
+    return re.findall(
+        r"[a-zA-Z0-9_]+",
+        text.lower(),
+    )
+
+
+# =========================================================
+# VECTORIZE
+# =========================================================
+
+def vectorize(text: str):
+
+    tokens = tokenize(
+        text
+    )
+
+    return Counter(
+        tokens
+    )
+
+
+# =========================================================
+# COSINE SIMILARITY
+# =========================================================
+
+def cosine_similarity(
+    vector_a,
+    vector_b,
+):
+
+    common_words = (
+        set(vector_a.keys())
+        &
+        set(vector_b.keys())
+    )
+
+    dot_product = sum(
+        vector_a[word]
+        * vector_b[word]
+        for word in common_words
+    )
+
+    magnitude_a = math.sqrt(
+        sum(
+            value * value
+            for value in vector_a.values()
+        )
+    )
+
+    magnitude_b = math.sqrt(
+        sum(
+            value * value
+            for value in vector_b.values()
+        )
+    )
+
+    if (
+        magnitude_a == 0
+        or magnitude_b == 0
+    ):
+        return 0.0
+
+    return (
+        dot_product
+        /
+        (
+            magnitude_a
+            * magnitude_b
+        )
+    )
 
 
 # =========================================================
@@ -127,18 +187,21 @@ def index_document(
     if not chunks:
         return 0
 
-    model = get_embedding_model()
+    chunk_vectors = []
 
-    embeddings = model.encode(
-        chunks,
-        normalize_embeddings=True,
-    )
+    for chunk in chunks:
+
+        chunk_vectors.append(
+            vectorize(
+                chunk
+            )
+        )
 
     documents[
         document_id
     ] = {
         "chunks": chunks,
-        "embeddings": embeddings,
+        "vectors": chunk_vectors,
     }
 
     return len(chunks)
@@ -159,33 +222,42 @@ def search_document(
     )
 
     if not document:
-
         return []
 
-    model = get_embedding_model()
-
-    query_embedding = model.encode(
-        [query],
-        normalize_embeddings=True,
-    )[0]
-
-    embeddings = document[
-        "embeddings"
-    ]
-
-    scores = np.dot(
-        embeddings,
-        query_embedding,
+    query_vector = vectorize(
+        query
     )
 
-    top_indexes = (
-        np.argsort(scores)
-        [::-1][:top_k]
+    scored_results = []
+
+    for index, chunk_vector in enumerate(
+        document["vectors"]
+    ):
+
+        score = cosine_similarity(
+            query_vector,
+            chunk_vector,
+        )
+
+        scored_results.append(
+            (
+                index,
+                score,
+            )
+        )
+
+    scored_results.sort(
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    top_results = (
+        scored_results[:top_k]
     )
 
     results = []
 
-    for index in top_indexes:
+    for index, score in top_results:
 
         results.append(
             {
@@ -196,7 +268,7 @@ def search_document(
 
                 "score":
                     float(
-                        scores[index]
+                        score
                     ),
             }
         )
